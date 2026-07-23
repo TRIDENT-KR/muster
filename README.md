@@ -5,7 +5,11 @@ One source of truth → `AGENTS.md`, `CLAUDE.md`, skills, and MCP config — ren
 
 Does your repo pass muster?
 
-> Status: **v0.1 experimental.** Interfaces will change. Not yet published to npm (will ship as `@muster/cli`).
+> Status: **v0.1 experimental.** Interfaces will change.
+
+```bash
+npm install -g @musterdev/cli
+```
 
 ## The problem
 
@@ -75,7 +79,7 @@ Three guarantees:
 ## Try the demo
 
 ```bash
-git clone <this repo> && cd muster && npm install && npm run build
+git clone https://github.com/TRIDENT-KR/muster && cd muster && npm install && npm run build
 cd examples/demo-app
 node ../../dist/cli.js sync && node ../../dist/cli.js check
 ```

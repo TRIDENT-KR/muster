@@ -1,8 +1,25 @@
 {
-  "name": "@musterhq/cli",
+  "name": "@musterdev/cli",
   "version": "0.1.0",
-  "private": true,
   "description": "Org-wide control plane for AI coding agent configuration — sync AGENTS.md, CLAUDE.md, skills, and MCP config from one source of truth.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TRIDENT-KR/muster.git"
+  },
+  "homepage": "https://github.com/TRIDENT-KR/muster#readme",
+  "bugs": "https://github.com/TRIDENT-KR/muster/issues",
+  "keywords": [
+    "ai-agents",
+    "agents-md",
+    "claude-code",
+    "cursor",
+    "copilot",
+    "mcp",
+    "skills",
+    "devtools",
+    "cli"
+  ],
   "type": "module",
   "bin": {
     "muster": "./dist/cli.js"
