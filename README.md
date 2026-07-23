@@ -26,8 +26,18 @@ Nobody owns these files, nothing keeps them in sync, and the instructions you gi
 
 ## Quickstart
 
+Already have agent config scattered around a repo? Adopt it in one command:
+
 ```bash
-# in a target repo
+npx @musterdev/cli adopt
+```
+
+`adopt` scans `AGENTS.md` / `CLAUDE.md` / `GEMINI.md` / `.cursorrules` / `.claude/skills/` / `.mcp.json` / `.cursor/mcp.json`, extracts everything into an `agent-config/` source directory, and re-renders the repo from it. Literal tokens found in MCP configs are **never copied** — they are replaced with `${ENV}` references and flagged. Anything ambiguous (e.g. a copilot instructions file that diverged from AGENTS.md) is reported, not silently merged. Then move `agent-config/` into a shared git repo and point every other repo at it.
+
+All commands:
+
+```bash
+muster adopt     # extract existing config into a central source (see above)
 muster init      # creates muster.yaml
 muster sync      # renders org config into this repo
 muster check     # exit 1 on drift — wire this into CI
@@ -71,6 +81,7 @@ agent-config/
 | `.mcp.json` | Claude Code | only org-managed server keys touched; personal servers left alone |
 | `.cursor/mcp.json` | Cursor | same merge semantics |
 | `.github/copilot-instructions.md` | GitHub Copilot | managed block |
+| `GEMINI.md` | Gemini CLI | managed block (full body — no import indirection) |
 
 Three guarantees:
 

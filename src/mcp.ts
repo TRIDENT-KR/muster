@@ -10,16 +10,22 @@ const SECRET_PATTERNS: [RegExp, string][] = [
   [/-----BEGIN [A-Z ]*PRIVATE KEY-----/, "private key"],
 ];
 
+/** Return the kind of literal secret found in the text, or null. */
+export function findSecretLabel(text: string): string | null {
+  for (const [pattern, label] of SECRET_PATTERNS) {
+    if (pattern.test(text)) return label;
+  }
+  return null;
+}
+
 /** Reject literal secrets in server configs — values must use ${ENV_VAR} references. */
 export function assertNoSecrets(name: string, server: McpServer): void {
-  const serialized = JSON.stringify(server);
-  for (const [pattern, label] of SECRET_PATTERNS) {
-    if (pattern.test(serialized)) {
-      throw new Error(
-        `mcp server "${name}" appears to contain a literal ${label}. ` +
-          `Never commit secrets — reference an environment variable instead, e.g. "\${MY_TOKEN}".`
-      );
-    }
+  const label = findSecretLabel(JSON.stringify(server));
+  if (label) {
+    throw new Error(
+      `mcp server "${name}" appears to contain a literal ${label}. ` +
+        `Never commit secrets — reference an environment variable instead, e.g. "\${MY_TOKEN}".`
+    );
   }
 }
 
@@ -104,7 +110,15 @@ export function applyJsonMerge(
 ): string {
   let doc: Record<string, unknown> = {};
   if (existingText !== null && existingText.trim().length > 0) {
-    const parsed: unknown = JSON.parse(existingText);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(existingText);
+    } catch (err) {
+      const hasComments = /(^|\s)\/\//.test(existingText) || existingText.includes("/*");
+      throw new Error(
+        `existing file is not valid JSON${hasComments ? " (comments are not supported in managed JSON files — remove them first)" : ""}: ${(err as Error).message}`
+      );
+    }
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       throw new Error(`expected a JSON object at the top level`);
     }

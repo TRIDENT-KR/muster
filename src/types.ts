@@ -1,4 +1,4 @@
-export const KNOWN_TARGETS = ["claude-code", "cursor", "copilot"] as const;
+export const KNOWN_TARGETS = ["claude-code", "cursor", "copilot", "gemini-cli"] as const;
 export type Target = (typeof KNOWN_TARGETS)[number];
 
 export type Selection = "all" | string[];

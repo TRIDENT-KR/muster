@@ -7,6 +7,7 @@ export const AGENTS_MD = "AGENTS.md";
 export const CLAUDE_MD = "CLAUDE.md";
 export const CLAUDE_BRIDGE_BODY = "@AGENTS.md";
 export const COPILOT_INSTRUCTIONS = ".github/copilot-instructions.md";
+export const GEMINI_MD = "GEMINI.md";
 export const CLAUDE_MCP_JSON = ".mcp.json";
 export const CURSOR_MCP_JSON = ".cursor/mcp.json";
 export const CLAUDE_SKILLS_DIR = ".claude/skills";
@@ -59,6 +60,11 @@ export function renderPlan(config: MusterConfig, tree: SourceTree): Artifact[] {
 
   if (config.targets.includes("copilot")) {
     artifacts.push({ kind: "managed-block", path: COPILOT_INSTRUCTIONS, body: instructionsBody });
+  }
+
+  // Full body rather than an @import: import semantics in GEMINI.md are unverified.
+  if (config.targets.includes("gemini-cli")) {
+    artifacts.push({ kind: "managed-block", path: GEMINI_MD, body: instructionsBody });
   }
 
   return artifacts;

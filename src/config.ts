@@ -96,6 +96,7 @@ source: ../agent-config
 #   claude-code -> CLAUDE.md bridge, .claude/skills/, .mcp.json
 #   cursor      -> .cursor/mcp.json (Cursor reads AGENTS.md natively)
 #   copilot     -> .github/copilot-instructions.md
+#   gemini-cli  -> GEMINI.md
 targets:
   - claude-code
   - cursor

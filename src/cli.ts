@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import { Command } from "commander";
 import pc from "picocolors";
 import { checkProject, ejectProject, initProject, statusProject, syncProject } from "./commands.js";
+import { adoptProject } from "./adopt.js";
 
 const require = createRequire(import.meta.url);
 const pkg = require("../package.json") as { version: string };
@@ -33,6 +34,46 @@ program
       console.log(`\nNext steps:`);
       console.log(`  1. Point ${pc.bold("source:")} at your org's agent-config repo`);
       console.log(`  2. Run ${pc.bold("muster sync")}`);
+    } catch (err) {
+      fail(err);
+    }
+  });
+
+program
+  .command("adopt")
+  .description("scan existing agent config (AGENTS.md, CLAUDE.md, skills, mcp) and extract it into a central source")
+  .option("--dir <dir>", "source directory to create", "agent-config")
+  .option("--no-sync", "extract only; skip the initial sync")
+  .option("--dry-run", "report what would be adopted without writing anything")
+  .action((opts: { dir: string; sync: boolean; dryRun?: boolean }) => {
+    try {
+      const report = adoptProject(process.cwd(), { dir: opts.dir, dryRun: opts.dryRun });
+      const say = (label: string, painted: (s: string) => string, text: string) =>
+        console.log(`  ${painted(label.padEnd(9))} ${text}`);
+      for (const f of report.fragments) say("adopt", pc.green, `${f.file}  ← ${f.from}`);
+      for (const s of report.skills) say("adopt", pc.green, `skills/${s}/  ← .claude/skills/${s}/`);
+      for (const s of report.servers) say("adopt", pc.green, `mcp: ${s.name}  ← ${s.from}`);
+      for (const s of report.secretsReplaced)
+        say("secret", pc.red, `${s.server}.${s.field} → ${s.ref} (literal value NOT copied — export it as an env var)`);
+      for (const c of report.captured) say("captured", pc.yellow, `${c} (now rendered by muster)`);
+      for (const n of report.notes) say("note", pc.yellow, n);
+
+      if (opts.dryRun) {
+        console.log(`\ndry run — nothing written`);
+        return;
+      }
+      console.log(`\ncreated ${report.sourceDir}/ and muster.yaml (targets: ${report.targets.join(", ")})`);
+      if (opts.sync) {
+        console.log("");
+        const sync = syncProject(process.cwd());
+        for (const { path: p, action } of sync.actions) {
+          if (action !== "unchanged") console.log(`  ${pc.green(action.padEnd(9))} ${p}`);
+        }
+        console.log(`\n${pc.green("✓")} adopted and synced — review with ${pc.bold("git diff")}, then commit`);
+        console.log(pc.dim(`next: move ${report.sourceDir}/ into a shared git repo to distribute org-wide`));
+      } else {
+        console.log(pc.dim("run `muster sync` to render the managed files"));
+      }
     } catch (err) {
       fail(err);
     }
