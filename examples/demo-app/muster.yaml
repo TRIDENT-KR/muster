@@ -1,0 +1,6 @@
+version: 1
+source: ../acme-agent-config
+targets:
+  - claude-code
+  - cursor
+  - copilot

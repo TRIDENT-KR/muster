@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "source": {
+    "ref": "../acme-agent-config",
+    "gitRef": null,
+    "commit": null,
+    "digest": "sha256:b3e0a20b0c23ccbf8dc18186ed16b92759db24fe0187e5082f2412b340fb2c7b"
+  },
+  "artifacts": {
+    ".claude/skills/release-notes/SKILL.md": {
+      "kind": "copy",
+      "hash": "f55701dcb91927e94f5f64c6eb2b7fdb8701001af89bd3c878b581e59e46bb0a"
+    },
+    ".cursor/mcp.json": {
+      "kind": "json-merge",
+      "hash": "8473456e787731a1728675584d502cb95bcaca7df33aa72c56696e789bd7a63e",
+      "managedKeys": [
+        "context7",
+        "github"
+      ]
+    },
+    ".github/copilot-instructions.md": {
+      "kind": "managed-block",
+      "hash": "d004cf279f6df917baea374cda6b5486a54664a14f8111eb47b5505850cda0d5"
+    },
+    ".mcp.json": {
+      "kind": "json-merge",
+      "hash": "5ae6422631ce115771d15d77f48ac575be9f37ae009386b11be12498c4e25847",
+      "managedKeys": [
+        "context7",
+        "github"
+      ]
+    },
+    "AGENTS.md": {
+      "kind": "managed-block",
+      "hash": "d004cf279f6df917baea374cda6b5486a54664a14f8111eb47b5505850cda0d5"
+    },
+    "CLAUDE.md": {
+      "kind": "managed-block",
+      "hash": "3c919ac4dd859eedd1db3727db01a46429e3cdb852d7374b375971cfc3d5498a"
+    }
+  }
+}
