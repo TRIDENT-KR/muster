@@ -22,7 +22,7 @@
   ],
   "type": "module",
   "bin": {
-    "muster": "./dist/cli.js"
+    "muster": "dist/cli.js"
   },
   "files": [
     "dist"
