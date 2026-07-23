@@ -2,7 +2,14 @@
 import { createRequire } from "node:module";
 import { Command } from "commander";
 import pc from "picocolors";
-import { checkProject, ejectProject, initProject, statusProject, syncProject } from "./commands.js";
+import {
+  checkProject,
+  diffProject,
+  ejectProject,
+  initProject,
+  statusProject,
+  syncProject,
+} from "./commands.js";
 import { adoptProject } from "./adopt.js";
 
 const require = createRequire(import.meta.url);
@@ -106,6 +113,33 @@ program
       if (report.stale) {
         console.log(pc.yellow("warning: could not update git source — using cached copy"));
       }
+    } catch (err) {
+      fail(err);
+    }
+  });
+
+program
+  .command("diff")
+  .description("show the exact content changes `muster sync` would make (exit 1 if any)")
+  .action(() => {
+    try {
+      const entries = diffProject(process.cwd());
+      if (entries.length === 0) {
+        console.log(pc.green("✓ no changes — rendered files already match the config source"));
+        process.exit(0);
+      }
+      for (const entry of entries) {
+        console.log(pc.bold(`\n▸ ${entry.path} ${pc.dim(`(${entry.action})`)}`));
+        for (const line of entry.diff.trimEnd().split("\n")) {
+          if (line.startsWith("+++") || line.startsWith("---")) console.log(pc.dim(line));
+          else if (line.startsWith("@@")) console.log(pc.cyan(line));
+          else if (line.startsWith("+")) console.log(pc.green(line));
+          else if (line.startsWith("-")) console.log(pc.red(line));
+          else console.log(line);
+        }
+      }
+      console.log(`\n${pc.bold(String(entries.length))} file(s) would change — run ${pc.bold("muster sync")} to apply`);
+      process.exit(1);
     } catch (err) {
       fail(err);
     }

@@ -1,6 +1,6 @@
 {
   "name": "@musterdev/cli",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Org-wide control plane for AI coding agent configuration — sync AGENTS.md, CLAUDE.md, skills, and MCP config from one source of truth.",
   "license": "MIT",
   "repository": {

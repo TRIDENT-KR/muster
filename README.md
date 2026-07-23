@@ -40,6 +40,7 @@ All commands:
 muster adopt     # extract existing config into a central source (see above)
 muster init      # creates muster.yaml
 muster sync      # renders org config into this repo
+muster diff      # preview the exact content sync would write (exit 1 if any)
 muster check     # exit 1 on drift — wire this into CI
 muster status    # see what's managed and its state
 muster eject     # remove everything muster manages, keep your local content

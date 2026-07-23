@@ -11,6 +11,7 @@ import {
 } from "./compose.js";
 import { applyJsonMerge, entriesHash, readManagedEntries } from "./mcp.js";
 import { renderPlan } from "./render.js";
+import { unifiedDiff } from "./diff.js";
 import { artifactLockEntry, readLock, writeLock } from "./lock.js";
 import { loadSourceTree, resolveSource } from "./source.js";
 import type {
@@ -52,27 +53,35 @@ function pruneEmptyDirs(startDir: string, stopDir: string): void {
 }
 
 /**
- * Build the removal operation for a previously managed artifact: delete copies,
- * strip managed blocks/keys, and never touch content muster does not own.
- * Returns null when the file is already gone.
+ * Plan the removal of a previously managed artifact: delete copies, strip
+ * managed blocks/keys, and never touch content muster does not own.
+ * `after` is the file content post-removal (null = file deleted), so diff
+ * can preview exactly what `apply` will do. Returns null when already gone.
  */
-function buildRemoval(
+function planRemoval(
   cwd: string,
   artifactPath: string,
   entry: Lockfile["artifacts"][string]
-): (() => void) | null {
+): { apply: () => void; after: string | null } | null {
   const abs = targetPath(cwd, artifactPath);
   if (!fs.existsSync(abs)) return null;
   if (entry.kind === "copy") {
-    return () => {
-      fs.rmSync(abs);
-      // Climb toward the repo root removing now-empty directories (.claude/skills, .claude).
-      pruneEmptyDirs(path.dirname(abs), cwd);
+    return {
+      after: null,
+      apply: () => {
+        fs.rmSync(abs);
+        // Climb toward the repo root removing now-empty directories (.claude/skills, .claude).
+        pruneEmptyDirs(path.dirname(abs), cwd);
+      },
     };
   }
   if (entry.kind === "managed-block") {
     const rest = removeManagedBlock(fs.readFileSync(abs, "utf8"));
-    return () => (rest.length > 0 ? fs.writeFileSync(abs, rest + "\n") : fs.rmSync(abs));
+    const after = rest.length > 0 ? rest + "\n" : null;
+    return {
+      after,
+      apply: () => (after !== null ? fs.writeFileSync(abs, after) : fs.rmSync(abs)),
+    };
   }
   const stripped = applyJsonMerge(
     fs.readFileSync(abs, "utf8"),
@@ -80,7 +89,25 @@ function buildRemoval(
     {},
     entry.managedKeys ?? []
   );
-  return () => fs.writeFileSync(abs, stripped);
+  return { after: stripped, apply: () => fs.writeFileSync(abs, stripped) };
+}
+
+/** Compute the exact content sync would write for one artifact. */
+function renderNext(
+  artifact: Artifact,
+  existing: string | null,
+  oldLock: Lockfile | null
+): string | Buffer {
+  if (artifact.kind === "managed-block") return upsertManagedBlock(existing, artifact.body);
+  if (artifact.kind === "json-merge") {
+    const prevKeys = oldLock?.artifacts[artifact.path]?.managedKeys ?? [];
+    try {
+      return applyJsonMerge(existing, artifact.root, artifact.entries, prevKeys);
+    } catch (err) {
+      throw new Error(`${artifact.path}: ${(err as Error).message}`);
+    }
+  }
+  return artifact.content;
 }
 
 export function initProject(cwd: string, opts: { force?: boolean } = {}): string {
@@ -109,19 +136,7 @@ export function syncProject(
   for (const artifact of plan) {
     const abs = targetPath(cwd, artifact.path);
     const existing = readIfExists(abs);
-    let next: string | Buffer;
-    if (artifact.kind === "managed-block") {
-      next = upsertManagedBlock(existing, artifact.body);
-    } else if (artifact.kind === "json-merge") {
-      const prevKeys = oldLock?.artifacts[artifact.path]?.managedKeys ?? [];
-      try {
-        next = applyJsonMerge(existing, artifact.root, artifact.entries, prevKeys);
-      } catch (err) {
-        throw new Error(`${artifact.path}: ${(err as Error).message}`);
-      }
-    } else {
-      next = artifact.content;
-    }
+    const next = renderNext(artifact, existing, oldLock);
 
     let action: WriteAction;
     if (existing === null && !fs.existsSync(abs)) action = "create";
@@ -137,9 +152,9 @@ export function syncProject(
   if (oldLock) {
     for (const [artifactPath, entry] of Object.entries(oldLock.artifacts)) {
       if (planPaths.has(artifactPath)) continue;
-      const removal = buildRemoval(cwd, artifactPath, entry);
+      const removal = planRemoval(cwd, artifactPath, entry);
       if (!removal) continue;
-      removals.push(removal);
+      removals.push(removal.apply);
       actions.push({ path: artifactPath, action: "delete" });
     }
   }
@@ -235,6 +250,56 @@ export function checkProject(cwd: string): CheckResult {
   return result;
 }
 
+export interface DiffEntry {
+  path: string;
+  action: WriteAction;
+  /** Unified diff of what sync would write, or a note for binary files. */
+  diff: string;
+}
+
+/** Preview the exact content changes `sync` would make, without writing. */
+export function diffProject(cwd: string): DiffEntry[] {
+  const config = loadConfig(cwd);
+  const source = resolveSource(config.source, config.ref, cwd, config.path);
+  const tree = loadSourceTree(source.dir, config);
+  const plan = renderPlan(config, tree);
+  const oldLock = readLock(cwd);
+  const planPaths = new Set(plan.map((a) => a.path));
+  const entries: DiffEntry[] = [];
+
+  const isBinary = (buf: Buffer | null) => buf !== null && buf.includes(0);
+
+  for (const artifact of plan) {
+    const abs = targetPath(cwd, artifact.path);
+    const existingBuf = fs.existsSync(abs) ? fs.readFileSync(abs) : null;
+    const existingText = existingBuf !== null && !isBinary(existingBuf) ? existingBuf.toString("utf8") : null;
+    const next = renderNext(artifact, existingText, oldLock);
+    const nextBuf = typeof next === "string" ? Buffer.from(next) : next;
+    if (existingBuf !== null && existingBuf.equals(nextBuf)) continue;
+    const action: WriteAction = existingBuf === null ? "create" : "update";
+    const diff =
+      isBinary(existingBuf) || isBinary(nextBuf)
+        ? `(binary file — ${action})\n`
+        : unifiedDiff(existingText, nextBuf.toString("utf8"), artifact.path);
+    entries.push({ path: artifact.path, action, diff });
+  }
+
+  if (oldLock) {
+    for (const [artifactPath, entry] of Object.entries(oldLock.artifacts)) {
+      if (planPaths.has(artifactPath)) continue;
+      const removal = planRemoval(cwd, artifactPath, entry);
+      if (!removal) continue;
+      const existingBuf = fs.readFileSync(targetPath(cwd, artifactPath));
+      const diff = isBinary(existingBuf)
+        ? "(binary file — delete)\n"
+        : unifiedDiff(existingBuf.toString("utf8"), removal.after, artifactPath);
+      entries.push({ path: artifactPath, action: "delete", diff });
+    }
+  }
+
+  return entries;
+}
+
 /**
  * Remove everything muster manages from this repo: strip managed blocks and
  * managed JSON keys, delete synced copies, and remove muster.lock.
@@ -248,9 +313,9 @@ export function ejectProject(cwd: string): { removed: string[] } {
   }
   const removed: string[] = [];
   for (const [artifactPath, entry] of Object.entries(lock.artifacts)) {
-    const removal = buildRemoval(cwd, artifactPath, entry);
+    const removal = planRemoval(cwd, artifactPath, entry);
     if (!removal) continue;
-    removal();
+    removal.apply();
     removed.push(artifactPath);
   }
   fs.rmSync(path.join(cwd, LOCK_FILE));
