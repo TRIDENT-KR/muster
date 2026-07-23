@@ -47,17 +47,32 @@ export function toClaudeEntry(server: McpServer): Record<string, unknown> {
   return entry;
 }
 
+const ENV_REF = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
+
+/** Canonical configs use `${NAME}`; Cursor only interpolates `${env:NAME}`. */
+function toCursorEnvRefs(value: unknown): unknown {
+  if (typeof value === "string") return value.replace(ENV_REF, "${env:$1}");
+  if (Array.isArray(value)) return value.map(toCursorEnvRefs);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, toCursorEnvRefs(v)])
+    );
+  }
+  return value;
+}
+
 /** Render an entry for Cursor's .cursor/mcp.json. */
 export function toCursorEntry(server: McpServer): Record<string, unknown> {
+  let entry: Record<string, unknown>;
   if (server.command) {
-    const entry: Record<string, unknown> = { command: server.command };
+    entry = { command: server.command };
     if (server.args) entry.args = server.args;
     if (server.env) entry.env = server.env;
-    return entry;
+  } else {
+    entry = { url: server.url };
+    if (server.headers) entry.headers = server.headers;
   }
-  const entry: Record<string, unknown> = { url: server.url };
-  if (server.headers) entry.headers = server.headers;
-  return entry;
+  return toCursorEnvRefs(entry) as Record<string, unknown>;
 }
 
 function sortDeep(value: unknown): unknown {

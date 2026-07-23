@@ -84,11 +84,17 @@ cd examples/demo-app
 node ../../dist/cli.js sync && node ../../dist/cli.js check
 ```
 
+## Env references in MCP configs
+
+Write secrets as `${VAR}` in `mcp/servers.yaml` — muster renders the right syntax per client: `${VAR}` for Claude Code (expanded natively) and `${env:VAR}` for Cursor. Avoid `${VAR:-default}` in shared configs; it is Claude Code-only.
+
 ## Honest support matrix
 
 - Instruction composition and drift checking: solid, tested.
-- MCP rendering for Claude Code / Cursor: matches current documented formats; verified against real clients continuously as they evolve.
-- Skills: synced to `.claude/skills/` today. Other tools adopting the SKILL.md standard read from their own locations — adapters coming as we verify each one.
+- MCP rendering: verified against official Claude Code and Cursor docs (July 2026) — Claude Code requires `type: "http"` for remote servers (we emit it) and expands `${VAR}`; Cursor entries get `${env:VAR}` rewritten automatically. Live-client end-to-end runs are the next validation step.
+- The `CLAUDE.md → @AGENTS.md` bridge is necessary and correct: Claude Code does not read AGENTS.md natively, and imports resolve up to 4 hops.
+- Skills: synced to `.claude/skills/<name>/SKILL.md` (verified location; frontmatter optional, extra files supported). Other tools adopting the SKILL.md standard read from their own locations — adapters coming as we verify each one.
+- Copilot: `.github/copilot-instructions.md` is current for Chat/Code Review; the Copilot Coding Agent also reads our rendered AGENTS.md.
 - Windows: untested.
 
 ## Roadmap

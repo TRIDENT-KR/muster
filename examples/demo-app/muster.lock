@@ -3,7 +3,7 @@
   "source": {
     "ref": "../acme-agent-config",
     "gitRef": null,
-    "commit": null,
+    "commit": "a1b0db8c5e06d21e5cd1cc506b00e2f70fece9f0",
     "digest": "sha256:b3e0a20b0c23ccbf8dc18186ed16b92759db24fe0187e5082f2412b340fb2c7b"
   },
   "artifacts": {
@@ -13,7 +13,7 @@
     },
     ".cursor/mcp.json": {
       "kind": "json-merge",
-      "hash": "8473456e787731a1728675584d502cb95bcaca7df33aa72c56696e789bd7a63e",
+      "hash": "07547a03601a74bf3f49dcfd11ce475c94ad68b87808638223f121aa2660a6c0",
       "managedKeys": [
         "context7",
         "github"

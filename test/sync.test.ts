@@ -76,9 +76,11 @@ describe("sync -> check lifecycle", () => {
 
     const mcp = JSON.parse(fs.readFileSync(path.join(targetDir, ".mcp.json"), "utf8"));
     expect(mcp.mcpServers.github.command).toBe("npx");
+    expect(mcp.mcpServers.github.env.GITHUB_TOKEN).toBe("${GITHUB_TOKEN}");
     expect(mcp.mcpServers.context7.type).toBe("http");
     const cursorMcp = JSON.parse(fs.readFileSync(path.join(targetDir, ".cursor/mcp.json"), "utf8"));
     expect(cursorMcp.mcpServers.context7.type).toBeUndefined();
+    expect(cursorMcp.mcpServers.github.env.GITHUB_TOKEN).toBe("${env:GITHUB_TOKEN}");
   });
 
   it("is clean and idempotent right after sync", () => {
@@ -132,6 +134,23 @@ describe("sync -> check lifecycle", () => {
     ).toBe("delete");
     expect(fs.existsSync(skillFile)).toBe(false);
     expect(checkProject(targetDir).drift).toEqual([]);
+  });
+
+  it("fails loudly when include references a name missing from the source", () => {
+    const typoDir = path.join(path.dirname(targetDir), "typo-app");
+    write(
+      typoDir,
+      "muster.yaml",
+      [
+        "version: 1",
+        `source: ${JSON.stringify(sourceDir)}`,
+        "targets: [claude-code]",
+        "include:",
+        "  mcp: [ghost]",
+        "",
+      ].join("\n")
+    );
+    expect(() => syncProject(typoDir)).toThrow(/include\.mcp references unknown name "ghost"/);
   });
 
   it("refuses to sync a source containing literal secrets", () => {

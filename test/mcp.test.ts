@@ -17,12 +17,30 @@ const stdio = {
 const http = { url: "https://mcp.example.dev/mcp" };
 
 describe("entry rendering", () => {
-  it("renders stdio servers identically for Claude and Cursor", () => {
+  it("keeps ${VAR} refs for Claude Code, which expands them natively", () => {
     expect(toClaudeEntry(stdio)).toEqual(stdio);
-    expect(toCursorEntry(stdio)).toEqual(stdio);
   });
 
-  it("adds an explicit http type only for Claude", () => {
+  it("rewrites ${VAR} to ${env:VAR} for Cursor", () => {
+    expect(toCursorEntry(stdio)).toEqual({
+      command: "npx",
+      args: ["-y", "@modelcontextprotocol/server-github"],
+      env: { GITHUB_TOKEN: "${env:GITHUB_TOKEN}" },
+    });
+  });
+
+  it("rewrites env refs inside Cursor http url and headers too", () => {
+    const server = {
+      url: "https://mcp.example.dev/${TENANT}/mcp",
+      headers: { Authorization: "Bearer ${API_TOKEN}" },
+    };
+    expect(toCursorEntry(server)).toEqual({
+      url: "https://mcp.example.dev/${env:TENANT}/mcp",
+      headers: { Authorization: "Bearer ${env:API_TOKEN}" },
+    });
+  });
+
+  it("adds an explicit http type only for Claude (required by Claude Code)", () => {
     expect(toClaudeEntry(http)).toEqual({ type: "http", url: http.url });
     expect(toCursorEntry(http)).toEqual({ url: http.url });
   });

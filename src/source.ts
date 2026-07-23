@@ -114,6 +114,23 @@ function selected(name: string, selection: Selection | undefined): boolean {
   return selection.includes(name);
 }
 
+/** A typo in `include` must fail loudly — a silently missing rule is a trust bug. */
+function assertKnownNames(
+  kind: "instructions" | "skills" | "mcp",
+  selection: Selection | undefined,
+  available: string[]
+): void {
+  if (selection === undefined || selection === "all") return;
+  for (const name of selection) {
+    if (!available.includes(name)) {
+      const known = available.length > 0 ? available.join(", ") : "(none found in source)";
+      throw new Error(
+        `muster.yaml: include.${kind} references unknown name "${name}" — available: ${known}`
+      );
+    }
+  }
+}
+
 function walkFiles(dir: string, rel = ""): SkillFile[] {
   const out: SkillFile[] = [];
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -132,27 +149,39 @@ export function loadSourceTree(dir: string, config: MusterConfig): SourceTree {
 
   const instructions: InstructionFragment[] = [];
   const instructionsDir = path.join(dir, "instructions");
-  if (fs.existsSync(instructionsDir)) {
-    for (const file of fs.readdirSync(instructionsDir).sort()) {
-      if (!file.endsWith(".md")) continue;
-      const name = file.slice(0, -3);
-      if (!selected(name, include.instructions)) continue;
-      instructions.push({ name, content: fs.readFileSync(path.join(instructionsDir, file), "utf8") });
-    }
+  const availableInstructions = fs.existsSync(instructionsDir)
+    ? fs
+        .readdirSync(instructionsDir)
+        .filter((f) => f.endsWith(".md"))
+        .map((f) => f.slice(0, -3))
+        .sort()
+    : [];
+  assertKnownNames("instructions", include.instructions, availableInstructions);
+  for (const name of availableInstructions) {
+    if (!selected(name, include.instructions)) continue;
+    instructions.push({
+      name,
+      content: fs.readFileSync(path.join(instructionsDir, `${name}.md`), "utf8"),
+    });
   }
 
   const skills: Skill[] = [];
   const skillsDir = path.join(dir, "skills");
-  if (fs.existsSync(skillsDir)) {
-    for (const entry of fs.readdirSync(skillsDir, { withFileTypes: true })) {
-      if (!entry.isDirectory() || SKIP_DIRS.has(entry.name)) continue;
-      if (!selected(entry.name, include.skills)) continue;
-      const skillDir = path.join(skillsDir, entry.name);
-      if (!fs.existsSync(path.join(skillDir, "SKILL.md"))) {
-        throw new Error(`skill "${entry.name}" is missing SKILL.md`);
-      }
-      skills.push({ name: entry.name, files: walkFiles(skillDir) });
+  const availableSkills = fs.existsSync(skillsDir)
+    ? fs
+        .readdirSync(skillsDir, { withFileTypes: true })
+        .filter((e) => e.isDirectory() && !SKIP_DIRS.has(e.name))
+        .map((e) => e.name)
+        .sort()
+    : [];
+  assertKnownNames("skills", include.skills, availableSkills);
+  for (const name of availableSkills) {
+    if (!selected(name, include.skills)) continue;
+    const skillDir = path.join(skillsDir, name);
+    if (!fs.existsSync(path.join(skillDir, "SKILL.md"))) {
+      throw new Error(`skill "${name}" is missing SKILL.md`);
     }
+    skills.push({ name, files: walkFiles(skillDir) });
   }
 
   const mcpServers: Record<string, McpServer> = {};
@@ -165,12 +194,16 @@ export function loadSourceTree(dir: string, config: MusterConfig): SourceTree {
       if (!servers || typeof servers !== "object" || Array.isArray(servers)) {
         throw new Error(`mcp/servers.yaml: "servers" must be a mapping of name -> definition`);
       }
-      for (const [name, def] of Object.entries(servers as Record<string, McpServer>)) {
+      const entries = servers as Record<string, McpServer>;
+      assertKnownNames("mcp", include.mcp, Object.keys(entries).sort());
+      for (const [name, def] of Object.entries(entries)) {
         if (!selected(name, include.mcp)) continue;
         validateServer(name, def);
         mcpServers[name] = def;
       }
     }
+  } else {
+    assertKnownNames("mcp", include.mcp, []);
   }
 
   return { instructions, skills, mcpServers };
