@@ -1,5 +1,5 @@
 {
-  "name": "@muster/cli",
+  "name": "@musterhq/cli",
   "version": "0.1.0",
   "private": true,
   "description": "Org-wide control plane for AI coding agent configuration — sync AGENTS.md, CLAUDE.md, skills, and MCP config from one source of truth.",
