@@ -1,6 +1,3 @@
-<!-- muster:begin -->
-<!-- Managed by muster. Edits inside this block will be overwritten — update the config source and run `muster sync`. -->
-
 # muster — contributor guide
 
 TypeScript ESM CLI, Node >= 20. No default exports; small files with one concern each.
@@ -29,5 +26,3 @@ Invariants to preserve:
 
 Integration tests build real repos under `.tmp/` (never `os.tmpdir()` — sandboxed
 environments). Add a lifecycle test for any new behavior; unit tests for pure logic.
-
-<!-- muster:end -->

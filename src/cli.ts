@@ -2,7 +2,7 @@
 import { createRequire } from "node:module";
 import { Command } from "commander";
 import pc from "picocolors";
-import { checkProject, initProject, statusProject, syncProject } from "./commands.js";
+import { checkProject, ejectProject, initProject, statusProject, syncProject } from "./commands.js";
 
 const require = createRequire(import.meta.url);
 const pkg = require("../package.json") as { version: string };
@@ -98,6 +98,20 @@ program
         }
       }
       process.exit(result.drift.length > 0 ? 1 : 0);
+    } catch (err) {
+      fail(err);
+    }
+  });
+
+program
+  .command("eject")
+  .description("remove everything muster manages: strip managed regions, delete synced files and muster.lock")
+  .action(() => {
+    try {
+      const { removed } = ejectProject(process.cwd());
+      for (const p of removed) console.log(`  ${pc.red("removed".padEnd(9))} ${p}`);
+      console.log(`\n${pc.bold(String(removed.length))} artifact(s) ejected — local content preserved`);
+      console.log(pc.dim("muster.yaml kept so you can re-sync later; delete it to fully remove muster"));
     } catch (err) {
       fail(err);
     }

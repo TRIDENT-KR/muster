@@ -1,9 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { checkProject, statusProject, syncProject } from "../src/commands.js";
+import { checkProject, ejectProject, statusProject, syncProject } from "../src/commands.js";
 
 const TMP_ROOT = path.join(process.cwd(), ".tmp");
+let testRoot: string;
 let sourceDir: string;
 let targetDir: string;
 
@@ -15,9 +16,9 @@ function write(base: string, rel: string, content: string): void {
 
 beforeAll(() => {
   fs.mkdirSync(TMP_ROOT, { recursive: true });
-  const root = fs.mkdtempSync(path.join(TMP_ROOT, "sync-"));
-  sourceDir = path.join(root, "acme-agent-config");
-  targetDir = path.join(root, "demo-app");
+  testRoot = fs.mkdtempSync(path.join(TMP_ROOT, "sync-"));
+  sourceDir = path.join(testRoot, "acme-agent-config");
+  targetDir = path.join(testRoot, "demo-app");
 
   write(sourceDir, "instructions/00-org.md", "# Acme engineering\n\nAlways write tests.");
   write(sourceDir, "instructions/20-typescript.md", "## TypeScript\n\nUse strict mode.");
@@ -52,7 +53,8 @@ beforeAll(() => {
 });
 
 afterAll(() => {
-  fs.rmSync(path.join(TMP_ROOT), { recursive: true, force: true });
+  // Remove only this file's sandbox — test files run in parallel workers.
+  fs.rmSync(testRoot, { recursive: true, force: true });
 });
 
 describe("sync -> check lifecycle", () => {
@@ -134,6 +136,49 @@ describe("sync -> check lifecycle", () => {
     ).toBe("delete");
     expect(fs.existsSync(skillFile)).toBe(false);
     expect(checkProject(targetDir).drift).toEqual([]);
+  });
+
+  it("ejects cleanly: managed content removed, local content and personal config kept", () => {
+    const root = path.dirname(targetDir);
+    const ejectSrc = path.join(root, "eject-src");
+    const ejectApp = path.join(root, "eject-app");
+    write(ejectSrc, "instructions/00-org.md", "# Eject Org\n\nManaged rule.");
+    write(ejectSrc, "skills/demo/SKILL.md", "---\nname: demo\n---\n\nA skill.");
+    write(
+      ejectSrc,
+      "mcp/servers.yaml",
+      ["servers:", "  github:", "    command: npx", ""].join("\n")
+    );
+    write(ejectApp, "AGENTS.md", "# Local eject-app notes\n");
+    write(
+      ejectApp,
+      ".mcp.json",
+      JSON.stringify({ mcpServers: { personal: { command: "my-tool" } } }, null, 2)
+    );
+    write(
+      ejectApp,
+      "muster.yaml",
+      ["version: 1", `source: ${JSON.stringify(ejectSrc)}`, "targets: [claude-code]", ""].join("\n")
+    );
+
+    syncProject(ejectApp);
+    expect(fs.existsSync(path.join(ejectApp, ".claude/skills/demo/SKILL.md"))).toBe(true);
+
+    const { removed } = ejectProject(ejectApp);
+    expect(removed.length).toBeGreaterThan(0);
+
+    const agents = fs.readFileSync(path.join(ejectApp, "AGENTS.md"), "utf8");
+    expect(agents).toContain("# Local eject-app notes");
+    expect(agents).not.toContain("muster:begin");
+    expect(agents).not.toContain("Managed rule.");
+    // CLAUDE.md was purely managed -> gone entirely.
+    expect(fs.existsSync(path.join(ejectApp, "CLAUDE.md"))).toBe(false);
+    expect(fs.existsSync(path.join(ejectApp, ".claude"))).toBe(false);
+    const mcp = JSON.parse(fs.readFileSync(path.join(ejectApp, ".mcp.json"), "utf8"));
+    expect(mcp.mcpServers.personal).toEqual({ command: "my-tool" });
+    expect(mcp.mcpServers.github).toBeUndefined();
+    expect(fs.existsSync(path.join(ejectApp, "muster.lock"))).toBe(false);
+    expect(fs.existsSync(path.join(ejectApp, "muster.yaml"))).toBe(true);
   });
 
   it("fails loudly when include references a name missing from the source", () => {

@@ -9,6 +9,8 @@ export interface MusterConfig {
   source: string;
   /** Optional git ref (branch, tag, or commit) when source is a git URL. */
   ref?: string;
+  /** Optional subdirectory inside the source containing the config tree. */
+  path?: string;
   /** Tool-specific outputs to render. AGENTS.md is always rendered. */
   targets: Target[];
   include?: {

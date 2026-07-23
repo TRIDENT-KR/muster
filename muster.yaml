@@ -1,0 +1,3 @@
+version: 1
+source: ./agent-config
+targets: [claude-code]

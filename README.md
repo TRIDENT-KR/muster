@@ -32,6 +32,7 @@ muster init      # creates muster.yaml
 muster sync      # renders org config into this repo
 muster check     # exit 1 on drift — wire this into CI
 muster status    # see what's managed and its state
+muster eject     # remove everything muster manages, keep your local content
 ```
 
 `muster.yaml`:
@@ -40,6 +41,7 @@ muster status    # see what's managed and its state
 version: 1
 source: git@github.com:acme/agent-config.git   # or a local path
 ref: main
+# path: configs/agent-config                   # optional subdir inside the source
 targets: [claude-code, cursor, copilot]
 include:            # optional, defaults to all
   skills: [release-notes]
@@ -91,7 +93,8 @@ Write secrets as `${VAR}` in `mcp/servers.yaml` — muster renders the right syn
 ## Honest support matrix
 
 - Instruction composition and drift checking: solid, tested.
-- MCP rendering: verified against official Claude Code and Cursor docs (July 2026) — Claude Code requires `type: "http"` for remote servers (we emit it) and expands `${VAR}`; Cursor entries get `${env:VAR}` rewritten automatically. Live-client end-to-end runs are the next validation step.
+- MCP rendering: verified against official Claude Code and Cursor docs (July 2026) — Claude Code requires `type: "http"` for remote servers (we emit it) and expands `${VAR}`; Cursor entries get `${env:VAR}` rewritten automatically.
+- Live-verified with Claude Code 2.1: rendered `.mcp.json` servers are recognized (`claude mcp list`), the `CLAUDE.md → @AGENTS.md` bridge delivers org instructions in headless runs, and synced `.claude/skills/` appear as available skills. This repo also manages itself with muster (`muster check` gates CI).
 - The `CLAUDE.md → @AGENTS.md` bridge is necessary and correct: Claude Code does not read AGENTS.md natively, and imports resolve up to 4 hops.
 - Skills: synced to `.claude/skills/<name>/SKILL.md` (verified location; frontmatter optional, extra files supported). Other tools adopting the SKILL.md standard read from their own locations — adapters coming as we verify each one.
 - Copilot: `.github/copilot-instructions.md` is current for Chat/Code Review; the Copilot Coding Agent also reads our rendered AGENTS.md.

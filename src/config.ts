@@ -31,6 +31,15 @@ export function parseConfig(text: string): MusterConfig {
   if (obj.ref !== undefined && typeof obj.ref !== "string") {
     throw new Error('muster.yaml: "ref" must be a string');
   }
+  if (obj.path !== undefined) {
+    if (typeof obj.path !== "string" || obj.path.trim() === "") {
+      throw new Error('muster.yaml: "path" must be a non-empty string');
+    }
+    const segments = obj.path.split("/");
+    if (obj.path.startsWith("/") || segments.includes("..")) {
+      throw new Error('muster.yaml: "path" must be a relative path inside the source (no .. or leading /)');
+    }
+  }
   if (!Array.isArray(obj.targets) || obj.targets.length === 0) {
     throw new Error(
       `muster.yaml: "targets" is required — one or more of: ${KNOWN_TARGETS.join(", ")}`
@@ -61,6 +70,7 @@ export function parseConfig(text: string): MusterConfig {
     version: 1,
     source: obj.source,
     ref: obj.ref as string | undefined,
+    path: obj.path as string | undefined,
     targets: obj.targets as Target[],
     include,
   };

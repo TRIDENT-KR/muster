@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { CONFIG_FILE, INIT_TEMPLATE, loadConfig } from "./config.js";
+import { CONFIG_FILE, INIT_TEMPLATE, LOCK_FILE, loadConfig } from "./config.js";
 import {
   extractManagedBlock,
   normalize,
@@ -10,7 +10,7 @@ import {
   END_MARKER,
 } from "./compose.js";
 import { applyJsonMerge, entriesHash, readManagedEntries } from "./mcp.js";
-import { renderPlan, CLAUDE_SKILLS_DIR } from "./render.js";
+import { renderPlan } from "./render.js";
 import { artifactLockEntry, readLock, writeLock } from "./lock.js";
 import { loadSourceTree, resolveSource } from "./source.js";
 import type {
@@ -51,6 +51,38 @@ function pruneEmptyDirs(startDir: string, stopDir: string): void {
   }
 }
 
+/**
+ * Build the removal operation for a previously managed artifact: delete copies,
+ * strip managed blocks/keys, and never touch content muster does not own.
+ * Returns null when the file is already gone.
+ */
+function buildRemoval(
+  cwd: string,
+  artifactPath: string,
+  entry: Lockfile["artifacts"][string]
+): (() => void) | null {
+  const abs = targetPath(cwd, artifactPath);
+  if (!fs.existsSync(abs)) return null;
+  if (entry.kind === "copy") {
+    return () => {
+      fs.rmSync(abs);
+      // Climb toward the repo root removing now-empty directories (.claude/skills, .claude).
+      pruneEmptyDirs(path.dirname(abs), cwd);
+    };
+  }
+  if (entry.kind === "managed-block") {
+    const rest = removeManagedBlock(fs.readFileSync(abs, "utf8"));
+    return () => (rest.length > 0 ? fs.writeFileSync(abs, rest + "\n") : fs.rmSync(abs));
+  }
+  const stripped = applyJsonMerge(
+    fs.readFileSync(abs, "utf8"),
+    "mcpServers",
+    {},
+    entry.managedKeys ?? []
+  );
+  return () => fs.writeFileSync(abs, stripped);
+}
+
 export function initProject(cwd: string, opts: { force?: boolean } = {}): string {
   const file = path.join(cwd, CONFIG_FILE);
   if (fs.existsSync(file) && !opts.force) {
@@ -65,7 +97,7 @@ export function syncProject(
   opts: { dryRun?: boolean } = {}
 ): SyncReport & { stale: boolean } {
   const config = loadConfig(cwd);
-  const source = resolveSource(config.source, config.ref, cwd);
+  const source = resolveSource(config.source, config.ref, cwd, config.path);
   const tree = loadSourceTree(source.dir, config);
   const plan = renderPlan(config, tree);
   const oldLock = readLock(cwd);
@@ -101,37 +133,13 @@ export function syncProject(
   }
 
   // Prune artifacts we managed before but that are gone from the source/targets.
-  const removals: { abs: string; artifactPath: string; run: () => void }[] = [];
+  const removals: (() => void)[] = [];
   if (oldLock) {
     for (const [artifactPath, entry] of Object.entries(oldLock.artifacts)) {
       if (planPaths.has(artifactPath)) continue;
-      const abs = targetPath(cwd, artifactPath);
-      if (!fs.existsSync(abs)) continue;
-      if (entry.kind === "copy") {
-        removals.push({
-          abs,
-          artifactPath,
-          run: () => {
-            fs.rmSync(abs);
-            pruneEmptyDirs(path.dirname(abs), path.join(cwd, ...CLAUDE_SKILLS_DIR.split("/")));
-          },
-        });
-      } else if (entry.kind === "managed-block") {
-        const rest = removeManagedBlock(fs.readFileSync(abs, "utf8"));
-        removals.push({
-          abs,
-          artifactPath,
-          run: () => (rest.length > 0 ? fs.writeFileSync(abs, rest + "\n") : fs.rmSync(abs)),
-        });
-      } else {
-        const stripped = applyJsonMerge(
-          fs.readFileSync(abs, "utf8"),
-          "mcpServers",
-          {},
-          entry.managedKeys ?? []
-        );
-        removals.push({ abs, artifactPath, run: () => fs.writeFileSync(abs, stripped) });
-      }
+      const removal = buildRemoval(cwd, artifactPath, entry);
+      if (!removal) continue;
+      removals.push(removal);
       actions.push({ path: artifactPath, action: "delete" });
     }
   }
@@ -141,7 +149,7 @@ export function syncProject(
       fs.mkdirSync(path.dirname(write.abs), { recursive: true });
       fs.writeFileSync(write.abs, write.content);
     }
-    for (const removal of removals) removal.run();
+    for (const removal of removals) removal();
 
     const lock: Lockfile = {
       version: 1,
@@ -203,7 +211,7 @@ export function checkProject(cwd: string): CheckResult {
   }
 
   try {
-    const source = resolveSource(config.source, config.ref, cwd);
+    const source = resolveSource(config.source, config.ref, cwd, config.path);
     const tree = loadSourceTree(source.dir, config);
     const desired = new Map(
       renderPlan(config, tree).map((a: Artifact) => [a.path, artifactLockEntry(a)])
@@ -225,6 +233,28 @@ export function checkProject(cwd: string): CheckResult {
   }
 
   return result;
+}
+
+/**
+ * Remove everything muster manages from this repo: strip managed blocks and
+ * managed JSON keys, delete synced copies, and remove muster.lock.
+ * muster.yaml is kept so the repo can re-sync later; delete it to fully eject.
+ */
+export function ejectProject(cwd: string): { removed: string[] } {
+  loadConfig(cwd);
+  const lock = readLock(cwd);
+  if (!lock) {
+    throw new Error(`no muster.lock found — nothing to eject`);
+  }
+  const removed: string[] = [];
+  for (const [artifactPath, entry] of Object.entries(lock.artifacts)) {
+    const removal = buildRemoval(cwd, artifactPath, entry);
+    if (!removal) continue;
+    removal();
+    removed.push(artifactPath);
+  }
+  fs.rmSync(path.join(cwd, LOCK_FILE));
+  return { removed };
 }
 
 export interface StatusInfo {

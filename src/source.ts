@@ -19,7 +19,7 @@ import type {
 const SKIP_DIRS = new Set([".git", "node_modules"]);
 
 export function isGitUrl(spec: string): boolean {
-  return /^(https?:\/\/|git@|ssh:\/\/)/.test(spec);
+  return /^(https?:\/\/|git@|ssh:\/\/|file:\/\/)/.test(spec);
 }
 
 function git(args: string[], cwd?: string): string {
@@ -36,7 +36,8 @@ function tryGit(args: string[], cwd?: string): string | null {
 
 function cacheDirFor(url: string): string {
   const hash = createHash("sha1").update(url).digest("hex").slice(0, 16);
-  return path.join(os.homedir(), ".cache", "muster", "sources", hash);
+  const base = process.env.MUSTER_CACHE_DIR ?? path.join(os.homedir(), ".cache", "muster");
+  return path.join(base, "sources", hash);
 }
 
 /** Walk a directory and hash every file (sorted, .git excluded) into one digest. */
@@ -70,43 +71,56 @@ export function digestDir(dir: string): string {
 export function resolveSource(
   spec: string,
   ref: string | undefined,
-  cwd: string
+  cwd: string,
+  subPath?: string
 ): ResolvedSource & { stale: boolean } {
-  if (!isGitUrl(spec)) {
-    const dir = path.resolve(cwd, spec);
+  const withSubPath = (baseDir: string, commit: string | null, stale: boolean) => {
+    const dir = subPath ? path.join(baseDir, ...subPath.split("/")) : baseDir;
     if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) {
-      throw new Error(`config source not found: ${dir}`);
+      throw new Error(
+        subPath
+          ? `config source path "${subPath}" not found inside ${spec}`
+          : `config source not found: ${dir}`
+      );
     }
-    const commit = tryGit(["rev-parse", "HEAD"], dir);
-    return { dir, commit, digest: digestDir(dir), stale: false };
+    return { dir, commit, digest: digestDir(dir), stale };
+  };
+
+  if (!isGitUrl(spec)) {
+    const baseDir = path.resolve(cwd, spec);
+    if (!fs.existsSync(baseDir) || !fs.statSync(baseDir).isDirectory()) {
+      throw new Error(`config source not found: ${baseDir}`);
+    }
+    const commit = tryGit(["rev-parse", "HEAD"], baseDir);
+    return withSubPath(baseDir, commit, false);
   }
 
-  const dir = cacheDirFor(spec);
+  const baseDir = cacheDirFor(spec);
   let stale = false;
-  if (!fs.existsSync(path.join(dir, ".git"))) {
-    fs.mkdirSync(path.dirname(dir), { recursive: true });
-    fs.rmSync(dir, { recursive: true, force: true });
+  if (!fs.existsSync(path.join(baseDir, ".git"))) {
+    fs.mkdirSync(path.dirname(baseDir), { recursive: true });
+    fs.rmSync(baseDir, { recursive: true, force: true });
     try {
       const args = ["clone", "--depth", "1"];
       if (ref) args.push("--branch", ref);
-      args.push(spec, dir);
+      args.push(spec, baseDir);
       git(args);
     } catch {
       // --branch only works for branches/tags; fall back to a full clone for commit refs.
-      fs.rmSync(dir, { recursive: true, force: true });
-      git(["clone", spec, dir]);
-      if (ref) git(["checkout", ref], dir);
+      fs.rmSync(baseDir, { recursive: true, force: true });
+      git(["clone", spec, baseDir]);
+      if (ref) git(["checkout", ref], baseDir);
     }
   } else {
     const updated =
       ref !== undefined
-        ? tryGit(["fetch", "origin", ref], dir) !== null &&
-          tryGit(["checkout", "FETCH_HEAD"], dir) !== null
-        : tryGit(["pull", "--ff-only"], dir) !== null;
+        ? tryGit(["fetch", "origin", ref], baseDir) !== null &&
+          tryGit(["checkout", "FETCH_HEAD"], baseDir) !== null
+        : tryGit(["pull", "--ff-only"], baseDir) !== null;
     if (!updated) stale = true;
   }
-  const commit = tryGit(["rev-parse", "HEAD"], dir);
-  return { dir, commit, digest: digestDir(dir), stale };
+  const commit = tryGit(["rev-parse", "HEAD"], baseDir);
+  return withSubPath(baseDir, commit, stale);
 }
 
 function selected(name: string, selection: Selection | undefined): boolean {

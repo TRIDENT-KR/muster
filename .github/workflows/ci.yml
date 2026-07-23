@@ -17,6 +17,8 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm test
+      - name: self-check (muster manages this repo)
+        run: node dist/cli.js check
       - name: e2e (demo app sync + check)
         run: |
           cd examples/demo-app

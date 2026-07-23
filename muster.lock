@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "source": {
+    "ref": "./agent-config",
+    "gitRef": null,
+    "commit": "2417a75c216e3815b52d99c11fbf1a2a1e46d802",
+    "digest": "sha256:b9d1c3c9b32a64bc96d80ce45020f1f0c28c242700c2e5282c364db5b68ece86"
+  },
+  "artifacts": {
+    "AGENTS.md": {
+      "kind": "managed-block",
+      "hash": "618fe6c1e922b9edf03bf148bcaddde1fa7c26be4e4dcec6765dd3b40922a909"
+    },
+    "CLAUDE.md": {
+      "kind": "managed-block",
+      "hash": "3c919ac4dd859eedd1db3727db01a46429e3cdb852d7374b375971cfc3d5498a"
+    }
+  }
+}
